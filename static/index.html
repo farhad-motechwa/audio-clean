@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Clean</title>
+<style>
+  :root {
+    --bg: #f6f3ee; --panel: #fffdf9; --ink: #1f1c18; --muted: #6f675d; --line: #e4ddd2;
+    --accent: #2f6f5e; --accent-ink: #ffffff; --accent-soft: #dcebe5;
+    --wave-a: #c9bfb1; --wave-b: #2f6f5e; --danger: #a33a2b;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151412; --panel: #1e1c19; --ink: #efe9e0; --muted: #a39a8d; --line: #34302a;
+      --accent: #6fbfa6; --accent-ink: #0f1a16; --accent-soft: #23332d;
+      --wave-a: #4a443c; --wave-b: #6fbfa6; --danger: #e0806f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+  header h1 { font: 600 2rem/1.1 ui-serif, Georgia, serif; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { margin: 0 0 32px; color: var(--muted); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+  .label { font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+
+  #drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    min-height: 150px; border: 1.5px dashed var(--line); border-radius: 10px; cursor: pointer;
+    text-align: center; padding: 16px; transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #drop strong { font-size: 1.05rem; }
+  #drop span { color: var(--muted); font-size: .9rem; }
+  #file { display: none; }
+
+  .engines { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .engine { position: relative; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+  .engine input { position: absolute; opacity: 0; }
+  .engine b { display: block; font-weight: 600; }
+  .engine small { color: var(--muted); }
+  .engine:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--accent-soft); }
+  .engine:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: center; margin-top: 22px; }
+  .row label { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { accent-color: var(--accent); width: 160px; }
+  input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
+  select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  output { font-variant-numeric: tabular-nums; min-width: 3ch; color: var(--muted); }
+
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; cursor: pointer; padding: 12px 20px; }
+  .primary { background: var(--accent); color: var(--accent-ink); }
+  .primary:disabled { opacity: .45; cursor: not-allowed; }
+  .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .actions { display: flex; gap: 12px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
+  #chosen { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+
+  #status { display: none; }
+  .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s linear; }
+  #status-text { margin: 0; }
+  .error { color: var(--danger); }
+
+  #result { display: none; }
+  .ab { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .ab button { border-radius: 0; padding: 8px 16px; background: transparent; color: var(--muted); font-weight: 600; }
+  .ab button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+  canvas { display: block; width: 100%; height: 120px; margin: 18px 0 8px; cursor: pointer; }
+  .times { display: flex; justify-content: space-between; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .play { width: 48px; height: 48px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+  .play svg { width: 20px; height: 20px; fill: currentColor; }
+  a.primary { text-decoration: none; display: inline-block; padding: 12px 20px; border-radius: 10px; font-weight: 600; }
+  footer { color: var(--muted); font-size: .85rem; text-align: center; margin-top: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Audio Clean</h1>
+    <p>Remove background noise and restore speech. Everything runs on this Mac; nothing is uploaded anywhere.</p>
+  </header>
+
+  <section class="panel">
+    <p class="label">1 · Recording</p>
+    <label id="drop" for="file">
+      <strong>Drop an audio or video file here</strong>
+      <span>or click to choose · WAV, MP3, M4A, FLAC, MP4, MOV and more</span>
+    </label>
+    <input id="file" type="file" accept="audio/*,video/*">
+    <p id="chosen"></p>
+  </section>
+
+  <section class="panel">
+    <p class="label">2 · Cleanup</p>
+    <div class="engines" id="engines">
+      <label class="engine"><input type="radio" name="engine" value="deepfilter" checked>
+        <b>Fast noise removal</b><small>Fans, hiss, traffic, hum. A few seconds.</small></label>
+      <label class="engine"><input type="radio" name="engine" value="resemble-denoise">
+        <b>Voice isolation</b><small>Pulls the voice out of busier rooms.</small></label>
+      <label class="engine"><input type="radio" name="engine" value="resemble-enhance">
+        <b>Studio restore</b><small>Rebuilds a fuller voice. Slow: roughly 4× the clip length.</small></label>
+    </div>
+    <div class="row">
+      <label>Strength <input id="strength" type="range" min="0" max="100" value="90"> <output id="strength-out">90%</output></label>
+      <label><input id="loudnorm" type="checkbox" checked> Level to podcast loudness</label>
+      <label>Save as
+        <select id="format"><option value="wav">WAV (24-bit)</option><option value="mp3">MP3 (192 kbps)</option></select>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="go" class="primary" disabled>Clean audio</button>
+    </div>
+  </section>
+
+  <section class="panel" id="status">
+    <p id="status-text" aria-live="polite"></p>
+    <div class="bar"><i id="bar"></i></div>
+  </section>
+
+  <section class="panel" id="result">
+    <div class="actions" style="margin-top:0; justify-content:space-between">
+      <div class="actions" style="margin-top:0">
+        <button class="primary play" id="play" aria-label="Play"><svg viewBox="0 0 24 24" id="play-icon"><path d="M7 4v16l13-8z"/></svg></button>
+        <div class="ab" role="group" aria-label="Compare">
+          <button id="ab-orig" aria-pressed="false">Original</button>
+          <button id="ab-clean" aria-pressed="true">Cleaned</button>
+        </div>
+      </div>
+      <a class="primary" id="download" href="#">Download</a>
+    </div>
+    <canvas id="wave" aria-label="Waveform, click to seek"></canvas>
+    <div class="times"><span id="t-now">0:00</span><span id="t-total">0:00</span></div>
+    <audio id="a-orig" preload="auto"></audio>
+    <audio id="a-clean" preload="auto"></audio>
+  </section>
+
+  <footer>Powered by DeepFilterNet and Resemble Enhance, both open source.</footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let file = null, jobId = null, poll = null, tick = null, listening = "clean";
+let peaks = { orig: null, clean: null };
+
+const fmt = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+// --- file selection ---
+function choose(f) {
+  if (!f) return;
+  file = f;
+  $("chosen").textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB`;
+  $("go").disabled = false;
+}
+$("file").addEventListener("change", (e) => choose(e.target.files[0]));
+const drop = $("drop");
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => choose(e.dataTransfer.files[0]));
+
+$("strength").addEventListener("input", (e) => ($("strength-out").textContent = e.target.value + "%"));
+
+// --- run a job ---
+$("go").addEventListener("click", async () => {
+  if (!file) return;
+  stopPlayback();
+  $("go").disabled = true;
+  $("result").style.display = "none";
+  showStatus("Uploading…", 0);
+
+  const body = new FormData();
+  body.append("file", file);
+  body.append("engine", document.querySelector("input[name=engine]:checked").value);
+  body.append("strength", $("strength").value / 100);
+  body.append("loudnorm", $("loudnorm").checked);
+  body.append("format", $("format").value);
+
+  try {
+    const res = await fetch("/api/jobs", { method: "POST", body });
+    const job = await res.json();
+    if (!res.ok) throw new Error(job.detail || "Upload failed");
+    jobId = job.id;
+    track(job);
+  } catch (err) {
+    showStatus(err.message, 0, true);
+    $("go").disabled = false;
+  }
+});
+
+function showStatus(text, pct, isError = false) {
+  $("status").style.display = "block";
+  $("status-text").textContent = text;
+  $("status-text").className = isError ? "error" : "";
+  $("bar").style.width = pct + "%";
+}
+
+function track(job) {
+  clearInterval(poll); clearInterval(tick);
+  let latest = job;
+  const render = () => {
+    const j = latest;
+    if (j.status === "queued") {
+      showStatus(j.ahead ? `Waiting for ${j.ahead} earlier job${j.ahead > 1 ? "s" : ""}…` : "Starting…", 2);
+    } else if (j.status === "processing") {
+      const elapsed = Date.now() / 1000 - j.started;
+      const pct = Math.min(95, (elapsed / j.estimate) * 100);
+      const left = Math.max(0, j.estimate - elapsed);
+      showStatus(`Cleaning ${fmt(j.duration)} of audio · ${left > 1 ? "about " + fmt(left) + " left" : "nearly there"}`, pct);
+    }
+  };
+  render();
+  tick = setInterval(render, 500);
+  poll = setInterval(async () => {
+    const res = await fetch(`/api/jobs/${jobId}`);
+    latest = await res.json();
+    if (latest.status === "done") {
+      clearInterval(poll); clearInterval(tick);
+      const secs = (latest.finished - latest.started).toFixed(1);
+      showStatus(`Done in ${secs}s.`, 100);
+      $("go").disabled = false;
+      loadResult();
+    } else if (latest.status === "error") {
+      clearInterval(poll); clearInterval(tick);
+      showStatus(`Something went wrong: ${latest.error}`, 0, true);
+      $("go").disabled = false;
+    }
+  }, 1000);
+}
+
+// --- result: A/B player + waveform ---
+const aOrig = $("a-orig"), aClean = $("a-clean");
+const active = () => (listening === "clean" ? aClean : aOrig);
+
+async function loadResult() {
+  const base = `/api/jobs/${jobId}`;
+  aOrig.src = `${base}/original`;
+  aClean.src = `${base}/result?t=${Date.now()}`;
+  $("download").href = `${base}/result?download=true`;
+  setListening("clean");
+  $("result").style.display = "block";
+  peaks = { orig: null, clean: null };
+  drawWave();
+  [peaks.orig, peaks.clean] = await Promise.all([loadPeaks(aOrig.src), loadPeaks(aClean.src)]);
+  drawWave();
+}
+
+async function loadPeaks(url) {
+  try {
+    const buf = await (await fetch(url)).arrayBuffer();
+    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+    const audio = await ctx.decodeAudioData(buf);
+    const data = audio.getChannelData(0), n = 600, step = Math.floor(data.length / n) || 1;
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let m = 0;
+      for (let j = i * step; j < (i + 1) * step && j < data.length; j++) m = Math.max(m, Math.abs(data[j]));
+      out[i] = m;
+    }
+    return out;
+  } catch { return null; } // some containers (e.g. certain videos) can't be decoded by the browser
+}
+
+function drawWave() {
+  const c = $("wave"), dpr = window.devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+  const g = c.getContext("2d"), css = getComputedStyle(document.documentElement);
+  g.clearRect(0, 0, c.width, c.height);
+  const mid = c.height / 2;
+  const draw = (p, colour, alpha) => {
+    if (!p) return;
+    const scale = Math.max(...p) || 1, w = c.width / p.length;
+    g.fillStyle = colour; g.globalAlpha = alpha;
+    p.forEach((v, i) => { const h = Math.max(1, (v / scale) * mid * 0.95); g.fillRect(i * w, mid - h, Math.max(1, w - dpr), h * 2); });
+  };
+  draw(peaks.orig, css.getPropertyValue("--wave-a"), 1);
+  draw(peaks.clean, css.getPropertyValue("--wave-b"), listening === "clean" ? 0.95 : 0.35);
+  const a = active();
+  if (a.duration) {
+    g.globalAlpha = 1; g.fillStyle = css.getPropertyValue("--ink");
+    g.fillRect((a.currentTime / a.duration) * c.width, 0, 2 * dpr, c.height);
+  }
+  g.globalAlpha = 1;
+}
+
+function setListening(which) {
+  const wasPlaying = !active().paused, t = active().currentTime;
+  listening = which;
+  $("ab-orig").setAttribute("aria-pressed", which === "orig");
+  $("ab-clean").setAttribute("aria-pressed", which === "clean");
+  aOrig.muted = which !== "orig";
+  aClean.muted = which !== "clean";
+  [aOrig, aClean].forEach((a) => { try { a.currentTime = t; } catch {} });
+  if (wasPlaying) { aOrig.play(); aClean.play(); }
+  drawWave();
+}
+$("ab-orig").addEventListener("click", () => setListening("orig"));
+$("ab-clean").addEventListener("click", () => setListening("clean"));
+
+const playIcon = '<path d="M7 4v16l13-8z"/>', pauseIcon = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
+$("play").addEventListener("click", () => {
+  if (active().paused) {
+    const t = active().currentTime;
+    [aOrig, aClean].forEach((a) => { a.currentTime = t; a.play(); });
+  } else stopPlayback();
+});
+function stopPlayback() { aOrig.pause(); aClean.pause(); }
+[aOrig, aClean].forEach((a) => {
+  a.addEventListener("play", () => { $("play-icon").innerHTML = pauseIcon; $("play").setAttribute("aria-label", "Pause"); });
+  a.addEventListener("pause", () => { $("play-icon").innerHTML = playIcon; $("play").setAttribute("aria-label", "Play"); });
+  a.addEventListener("ended", stopPlayback);
+});
+aClean.addEventListener("loadedmetadata", () => ($("t-total").textContent = fmt(aClean.duration)));
+(function frame() {
+  if ($("result").style.display === "block") {
+    $("t-now").textContent = fmt(active().currentTime);
+    if (!active().paused) drawWave();
+  }
+  requestAnimationFrame(frame);
+})();
+
+$("wave").addEventListener("click", (e) => {
+  const a = active(); if (!a.duration) return;
+  const t = (e.offsetX / e.currentTarget.clientWidth) * a.duration;
+  [aOrig, aClean].forEach((x) => { try { x.currentTime = t; } catch {} });
+  drawWave();
+});
+window.addEventListener("resize", drawWave);
+</script>
+</body>
+</html>
