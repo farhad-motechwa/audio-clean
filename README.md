@@ -35,6 +35,27 @@ Any format ffmpeg can read is accepted, including video (the audio track is extr
 - `static/index.html`: the page.
 - `data/jobs/<id>/`: uploads and results (git-ignored; safe to delete).
 
+Uploads are kept in each job's `input/` directory under generated filenames.
+Intermediate audio and results are kept separately in `work/`; downloads retain
+the recording's original name with `_clean` added.
+
+Saved jobs remain available through their existing job URLs after a restart.
+Interrupted jobs are marked as errors and must be submitted again. If a status
+check loses its connection, use **Retry status check** to reconnect to that job.
+File selection and submission stay locked while that job is active.
+
+## Regression checks
+
+With the project environment installed:
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+node tests/frontend.cjs
+```
+
+These checks cover upload isolation, job recovery and interface error handling.
+They use processing and browser stubs, so they do not assess audio quality.
+
 ## Notes on dependencies
 
 `resemble-enhance` pins an old training stack. `pyproject.toml` uses uv overrides to keep torch 2.1.2 and NumPy 1.x, and drops `deepspeed` (training only, no macOS build) and `gradio`. `app/engines.py` registers a stand-in `deepspeed` module so the inference imports succeed, and fetches weights with `huggingface_hub` instead of git-lfs.

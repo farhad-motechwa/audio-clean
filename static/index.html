@@ -122,6 +122,7 @@
   <section class="panel" id="status">
     <p id="status-text" aria-live="polite"></p>
     <div class="bar"><i id="bar"></i></div>
+    <button id="retry" class="ghost" hidden>Retry status check</button>
   </section>
 
   <section class="panel" id="result">
@@ -148,15 +149,27 @@
 const $ = (id) => document.getElementById(id);
 let file = null, jobId = null, poll = null, tick = null, listening = "clean";
 let peaks = { orig: null, clean: null };
+let busy = false, trackingVersion = 0, retryJob = null;
+
+function setBusy(value) {
+  busy = value;
+  $("go").disabled = busy || !file;
+  $("file").disabled = busy;
+}
+
+function stopTracking() {
+  trackingVersion++;
+  clearInterval(poll); clearInterval(tick);
+}
 
 const fmt = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 // --- file selection ---
 function choose(f) {
-  if (!f) return;
+  if (!f || busy) return;
   file = f;
   $("chosen").textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB`;
-  $("go").disabled = false;
+  setBusy(false);
 }
 $("file").addEventListener("change", (e) => choose(e.target.files[0]));
 const drop = $("drop");
@@ -168,9 +181,12 @@ $("strength").addEventListener("input", (e) => ($("strength-out").textContent = 
 
 // --- run a job ---
 $("go").addEventListener("click", async () => {
-  if (!file) return;
+  if (!file || busy) return;
   stopPlayback();
-  $("go").disabled = true;
+  stopTracking();
+  retryJob = null;
+  $("retry").hidden = true;
+  setBusy(true);
   $("result").style.display = "none";
   showStatus("Uploading…", 0);
 
@@ -189,7 +205,7 @@ $("go").addEventListener("click", async () => {
     track(job);
   } catch (err) {
     showStatus(err.message, 0, true);
-    $("go").disabled = false;
+    setBusy(false);
   }
 });
 
@@ -201,8 +217,12 @@ function showStatus(text, pct, isError = false) {
 }
 
 function track(job) {
-  clearInterval(poll); clearInterval(tick);
-  let latest = job;
+  stopTracking();
+  const version = trackingVersion, trackedId = job.id;
+  let latest = job, checking = false;
+  retryJob = null;
+  $("retry").hidden = true;
+  setBusy(true);
   const render = () => {
     const j = latest;
     if (j.status === "queued") {
@@ -217,28 +237,55 @@ function track(job) {
   render();
   tick = setInterval(render, 500);
   poll = setInterval(async () => {
-    const res = await fetch(`/api/jobs/${jobId}`);
-    latest = await res.json();
-    if (latest.status === "done") {
-      clearInterval(poll); clearInterval(tick);
-      const secs = (latest.finished - latest.started).toFixed(1);
-      showStatus(`Done in ${secs}s.`, 100);
-      $("go").disabled = false;
-      loadResult();
-    } else if (latest.status === "error") {
-      clearInterval(poll); clearInterval(tick);
-      showStatus(`Something went wrong: ${latest.error}`, 0, true);
-      $("go").disabled = false;
+    if (checking || version !== trackingVersion) return;
+    checking = true;
+    try {
+      const res = await fetch(`/api/jobs/${trackedId}`);
+      if (!res.ok) {
+        const error = new Error(res.status === 404 ? "Job not found. You can submit the recording again." : `Server returned ${res.status}.`);
+        error.status = res.status;
+        throw error;
+      }
+      const next = await res.json();
+      if (version !== trackingVersion) return;
+      if (!["queued", "processing", "done", "error"].includes(next.status)) throw new Error("Invalid job status received.");
+      latest = next;
+      if (latest.status === "done") {
+        clearInterval(poll); clearInterval(tick);
+        const secs = (latest.finished - latest.started).toFixed(1);
+        showStatus(`Done in ${secs}s.`, 100);
+        await loadResult(trackedId);
+        setBusy(false);
+      } else if (latest.status === "error") {
+        stopTracking();
+        showStatus(`Something went wrong: ${latest.error}`, 0, true);
+        setBusy(false);
+      }
+    } catch (err) {
+      if (version !== trackingVersion) return;
+      stopTracking();
+      if (err.status === 404) {
+        showStatus(err.message, 0, true);
+        setBusy(false);
+      } else {
+        // Keep this job selected: retry reconnects without uploading it twice.
+        retryJob = latest;
+        $("retry").hidden = false;
+        showStatus(`Could not check progress: ${err.message} Retry to reconnect.`, 0, true);
+      }
+    } finally {
+      checking = false;
     }
   }, 1000);
 }
+$("retry").addEventListener("click", () => { if (retryJob) track(retryJob); });
 
 // --- result: A/B player + waveform ---
 const aOrig = $("a-orig"), aClean = $("a-clean");
 const active = () => (listening === "clean" ? aClean : aOrig);
 
-async function loadResult() {
-  const base = `/api/jobs/${jobId}`;
+async function loadResult(id) {
+  const base = `/api/jobs/${id}`;
   aOrig.src = `${base}/original`;
   aClean.src = `${base}/result?t=${Date.now()}`;
   $("download").href = `${base}/result?download=true`;
