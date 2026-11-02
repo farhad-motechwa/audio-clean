@@ -3,6 +3,7 @@ name = "audio-clean"
 version = "0.1.0"
 description = "Local audio cleanup: noise removal and speech restoration on your Mac"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "deepfilternet>=0.5.6",

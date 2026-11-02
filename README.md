@@ -40,3 +40,7 @@ Any format ffmpeg can read is accepted, including video (the audio track is extr
 `resemble-enhance` pins an old training stack. `pyproject.toml` uses uv overrides to keep torch 2.1.2 and NumPy 1.x, and drops `deepspeed` (training only, no macOS build) and `gradio`. `app/engines.py` registers a stand-in `deepspeed` module so the inference imports succeed, and fetches weights with `huggingface_hub` instead of git-lfs.
 
 On torch 2.1, the Studio restore stage aborts on Apple's GPU backend, so it runs on the CPU. The other modes use the GPU where possible.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The models are separate projects under their own licences: [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) (MIT or Apache-2.0) and [Resemble Enhance](https://github.com/resemble-ai/resemble-enhance) (MIT).
